@@ -1,10 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 /* ******************************************************************
  ALTERNATING BIT AND GO-BACK-N NETWORK EMULATOR: VERSION 1.1  J.F.Kurose
-
    This code should be used for PA2, unidirectional or bidirectional
    data transfer protocols (from A to B. Bidirectional transfer of data
    is for extra credit and is not required).  Network properties:
@@ -16,93 +16,248 @@
      (although some can be lost).
 **********************************************************************/
 
-#define BIDIRECTIONAL 0    /* change to 1 if you're doing extra credit */
-                           /* and write a routine called B_output */
+#define BIDIRECTIONAL 0 /* change to 1 if you're doing extra credit */
+                        /* and write a routine called B_output */
+
+// *macros to be used when calling tolayer5,tolayer3,starttimer,stoptimer,Ack functions
+//which requires a AorB parameter instead of hardcoding numbers
+#define Avalue 0
+#define Bvalue 1
+
+//*macro for Sender's estimated RTT value
+#define RTT 15 
 
 /* a "msg" is the data unit passed from layer 5 (teachers code) to layer  */
 /* 4 (students' code).  It contains the data (characters) to be delivered */
 /* to layer 5 via the students transport level protocol entities.         */
-struct msg {
-  char data[20];
-  };
+
+//datastructure of a message which contains fixed sized payload of 20 charachters / 20 bytes
+struct msg
+{
+    char data[20];
+};
 
 /* a packet is the data unit passed from layer 4 (students code) to layer */
 /* 3 (teachers code).  Note the pre-defined packet structure, which all   */
 /* students must follow. */
-struct pkt {
-   int seqnum;
-   int acknum;
-   int checksum;
-   char payload[20];
-    };
+struct pkt
+{
+    int seqnum;
+    int acknum;
+    int checksum;
+    char payload[20];
+};
 
+//Set of all possible States in the finite state machine for both Sender and reciever entity
+enum FsmStates
+{
+    WAITING_FOR_ACKNOWLEDGEMENT,
+    WAITING_FOR_LAYER5_CALL,
+    WAITING_FOR_0_SEQ = 0,
+    WAITING_FOR_1_SEQ = 1
+};
+
+// A Structure that contains Sender Entity's required data such as its state in the finite state machine
+//, round trip time after which timer interrupt occurs,sender bit sequence
+struct SenderEntity
+{
+    enum FsmStates SenderFsmState;
+    int RoundTripTime;
+    bool Senderbitsequence;
+    struct pkt lastpacket;
+};
+struct RecieverEntity
+{
+    enum FsmStates RecieverFsmState;
+};
 
 void starttimer(int AorB, float increment);
 void stoptimer(int AorB);
 void tolayer3(int AorB, struct pkt packet);
 void tolayer5(int AorB, char datasent[20]);
 
+//utilities implemented
+int CalculateChecksum(struct pkt *packet);
+void BufferData(char *data1creator, char *data2reciever);
+void Ack(int AorB, int ack);
 
 /********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
-
+struct SenderEntity A;
+struct RecieverEntity B;
 
 /* called from layer 5, passed the data to be sent to other side */
+
 void A_output(struct msg message)
 {
-  int i, j;
-
-  i=0;
-  j=0;
-
-  printf("now in A_output\n");
-
-  for (i=0; i< 20; i++)
+    switch (A.SenderFsmState)
     {
-      j = j+ (int) message.data[i];
-
+    case WAITING_FOR_ACKNOWLEDGEMENT:
+        printf("Entity A Sender is still waiting for acknowledgement,\n so packet with message (%s) is dropped  \n", message.data);
+        break;
+    case WAITING_FOR_LAYER5_CALL:
+    {
+        //making a new packet
+        struct pkt newPacket;
+        newPacket.seqnum = A.Senderbitsequence;
+        //setting package acknowledgement number for synchronizing with reciever
+        newPacket.acknum = A.Senderbitsequence;
+        //buffering data for the new packet
+        BufferData(message.data, newPacket.payload);
+        // adding checksum to the packet
+        newPacket.checksum = CalculateChecksum(&newPacket);
+        //sending packet to layer3
+        tolayer3(Avalue, newPacket);
+        printf("Entity A Sender sent packet with sequence number of %d and data of %s\n", newPacket.seqnum, newPacket.payload);
+        // Changing A's State
+        A.SenderFsmState = WAITING_FOR_ACKNOWLEDGEMENT;
+        // setting last packet in A to the formed packet in cas lost
+        A.lastpacket = newPacket;
+        //starting timer for the stop and wait process
+        starttimer(Avalue, A.RoundTripTime);
     }
-  printf ("j is %d %d\n", j, (int)('a'));
+    default:
+        break;
+    }
+}
+//* function that takes the packet and returns the checksum for it and return it to
+//either  add it to packet  or to validate being not corrupted
+int CalculateChecksum(struct pkt *packet)
+{
+    //to calculate the checksum we first sum all the packet headers and payload values
+    int checksum = packet->acknum + packet->seqnum;
+    for (int i = 0; i < 20; i++)
+    {
+        checksum += packet->payload[i];
+    }
 
+    return checksum;
 }
 
-void B_output(struct msg message)  /* need be completed only for extra credit */
+//* void function that buffers data into the packet by identifying its size and copying it elementwise
+void BufferData(char *data1creator, char *data2reciever)
 {
-/*do nothing */
+    // int datasize = (int)(sizeof(data1creator) / sizeof(char)); //gets the size of the buffer to loop on
+    for (int i = 0; i < 20; i++)
+    {
+        data2reciever[i] = data1creator[i];
+    }
+}
+
+void B_output(struct msg message) /* need be completed only for extra credit */
+{
+    /*do nothing */
 }
 
 /* called from layer 3, when a packet arrives for layer 4 */
 void A_input(struct pkt packet)
 {
-/* stop timer*/
-stoptimer(0);
-/* check if ack is ok*/
+    // checking the sender's state in entity A
+    switch (A.SenderFsmState)
+    {
+    case WAITING_FOR_ACKNOWLEDGEMENT:
+        //case not waiting for acknowledgement
+        if (packet.checksum == CalculateChecksum(&packet))
+        {
+            if (packet.acknum == A.Senderbitsequence)
+            {
+                printf("Entity A Sender recieved Correct packet Acknowledgement, please proceed\n");
+                // sincec checksum and acknowledgement number are correct so we stop the timer and send the packet to layer 5
+                stoptimer(Avalue);
+                //also since this packet is an ack packet we just consume it and don't pass it to layer 5
+                A.SenderFsmState = WAITING_FOR_LAYER5_CALL;
+                //flipping A's Senderbitsequence
+                A.Senderbitsequence != A.Senderbitsequence;
+            }
+            else
+            {
+                printf("Entity A Sender recieved unexpected ack which is not equal to %d , correct and resend\n", A.Senderbitsequence);
+                // tolayer3(Avalue, A.lastpacket);
+                return;
+            }
+        }
+        else
+        {
+            printf("Endtity A Sender Recieved packet with payload %s is corrupted , resend\n", packet.payload);
+            // tolayer3(Avalue, A.lastpacket);
+            return;
+        }
+        break;
 
-/*check if ack no == send no */
-
-	/*if not resent last packet */
-
-	/*if yes increment seq_no and exit */
-
-
+    default:
+        // case when A Sender is not waiting for acknowledgement and not waiting for Ack messages
+        printf("Entity A Sender is not waiting for acknowledgement so cant take this input with data %s and will drop it \n ", packet.payload);
+        break;
+    }
 }
 
 /* called when A's timer goes off */
 void A_timerinterrupt(void)
 {
+    switch (A.SenderFsmState)
+    {
+    case WAITING_FOR_ACKNOWLEDGEMENT:
+        printf("Entity A Sender's timer timed out, resending last packet of payload %s \n", A.lastpacket.payload);
+        tolayer3(Avalue, A.lastpacket);
+        starttimer(Avalue, A.RoundTripTime);
+        break;
+
+    default:
+        printf("Entity A Sender's timer timed out while not waiting for acknowledgement hence no data on the network and ignore\n");
+        break;
+    }
 }
 
 /* the following routine will be called once (only) before any other */
 /* entity A routines are called. You can use it to do any initialization */
 void A_init(void)
 {
+    //initializing A sending entity
+    A.RoundTripTime = RTT,
+    A.Senderbitsequence = 0,
+    A.SenderFsmState = WAITING_FOR_LAYER5_CALL;
 }
-
+// void function that sends acknowledgement or negative acknowledgement for A or B ( the sender )
+void Ack(int AorB, int ack)
+{
+    //make a packet with no payload just acknowledgement field
+    struct pkt ackpacket;
+    ackpacket.acknum = ack;
+    //then add checksum to it to check corruption of the Ack packet
+    ackpacket.checksum = CalculateChecksum(&ackpacket);
+    //send ack packet to the network layer destined to the sender side specified in the parameters
+    tolayer3(AorB, ackpacket);
+}
 
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
 
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet)
 {
+    if (packet.checksum != CalculateChecksum(&packet))
+    {
+        printf("Entity B Reciever recieved packet with payload %s is corrupted ,\n sending negative acknowledgment please resend \n", packet.payload);
+        //send -ve acknowledgement
+        Ack(Bvalue, !B.RecieverFsmState);
+        return;
+    }
+    //if checksum is okay and data not corrupted
+
+    else if (packet.seqnum == B.RecieverFsmState)
+    {
+        printf("Entity B Reciever recieved packet with payload %s  (not corrupted),\n sending positive acknowledgement to A Entity\n ", packet.payload);
+        //positively acknowledging A sender
+        Ack(Bvalue, B.RecieverFsmState);
+        //send data for application layer for later use
+        tolayer5(Bvalue, packet.payload);
+        B.RecieverFsmState = B.RecieverFsmState == WAITING_FOR_0_SEQ ? WAITING_FOR_1_SEQ : WAITING_FOR_0_SEQ;
+        return;
+    }
+    else
+    {
+        printf("Entity B Reciever recieved packet (which is not corrupted(),\n but with different Ack num hence dropped with negative acknowledgement\n (correct acknowledgement A is waiting for)\n");
+        Ack(Bvalue, !B.RecieverFsmState);
+        return;
+    }
 }
 
 /* called when B's timer goes off */
@@ -114,8 +269,10 @@ void B_timerinterrupt(void)
 /* entity B routines are called. You can use it to do any initialization */
 void B_init(void)
 {
-}
 
+    //initializing B Reciever Entity
+    B.RecieverFsmState = WAITING_FOR_0_SEQ;
+}
 
 /*****************************************************************
 ***************** NETWORK EMULATION CODE STARTS BELOW ***********
@@ -258,45 +415,46 @@ terminate:
     printf(
         " Simulator terminated at time %f\n after sending %d msgs from layer5\n",
         time, nsim);
+    system("pause");
 }
 
-void init(int argc, char **argv)                         /* initialize the simulator */
+void init(int argc, char **argv) /* initialize the simulator */
 {
-  int i;
-  float sum, avg;
-  float jimsrand();
+    int i;
+    float sum, avg;
+    float jimsrand();
 
+    printf("-----  Stop and Wait Network Simulator Version 1.1 -------- \n\n");
+    printf("Enter the number of messages to simulate: ");
+    scanf("%d", &nsimmax);
+    printf("Enter  packet loss probability [enter 0.0 for no loss]:");
+    scanf("%f", &lossprob);
+    printf("Enter packet corruption probability [0.0 for no corruption]:");
+    scanf("%f", &corruptprob);
+    printf("Enter average time between messages from sender's layer5 [ > 0.0]:");
+    scanf("%f", &lambda);
+    printf("Enter TRACE:");
+    scanf("%d", &TRACE);
 
-   printf("-----  Stop and Wait Network Simulator Version 1.1 -------- \n\n");
-   printf("Enter the number of messages to simulate: ");
-   scanf("%d",&nsimmax);
-   printf("Enter  packet loss probability [enter 0.0 for no loss]:");
-   scanf("%f",&lossprob);
-   printf("Enter packet corruption probability [0.0 for no corruption]:");
-   scanf("%f",&corruptprob);
-   printf("Enter average time between messages from sender's layer5 [ > 0.0]:");
-   scanf("%f",&lambda);
-   printf("Enter TRACE:");
-   scanf("%d",&TRACE);
-
-   srand(9999);              /* init random number generator */
-   sum = 0.0;                /* test random number generator for students */
-   for (i=0; i<1000; i++)
-      sum=sum+jimsrand();    /* jimsrand() should be uniform in [0,1] */
-   avg = sum/1000.0;
-   if (avg < 0.25 || avg > 0.75) {
-    printf("It is likely that random number generation on your machine\n" );
-    printf("is different from what this emulator expects.  Please take\n");
-    printf("a look at the routine jimsrand() in the emulator code. Sorry. \n");
-    exit(0);
+    srand(9999); /* init random number generator */
+    sum = 0.0;   /* test random number generator for students */
+    for (i = 0; i < 1000; i++)
+        sum = sum + jimsrand(); /* jimsrand() should be uniform in [0,1] */
+    avg = sum / 1000.0;
+    if (avg < 0.25 || avg > 0.75)
+    {
+        printf("It is likely that random number generation on your machine\n");
+        printf("is different from what this emulator expects.  Please take\n");
+        printf("a look at the routine jimsrand() in the emulator code. Sorry. \n");
+        exit(0);
     }
 
-   ntolayer3 = 0;
-   nlost = 0;
-   ncorrupt = 0;
+    ntolayer3 = 0;
+    nlost = 0;
+    ncorrupt = 0;
 
-   time=0.0;                    /* initialize time to 0.0 */
-   generate_next_arrival();     /* initialize event list */
+    time = 0.0;              /* initialize time to 0.0 */
+    generate_next_arrival(); /* initialize event list */
 }
 
 /****************************************************************************/
@@ -526,7 +684,7 @@ void tolayer3(int AorB /* A or B is trying to stop timer */, struct pkt packet)
 void tolayer5(int AorB, char datasent[20])
 {
     int i;
-    if (TRACE > 2)
+    if (TRACE >= 2)
     {
         printf("          TOLAYER5: data received: ");
         for (i = 0; i < 20; i++)
