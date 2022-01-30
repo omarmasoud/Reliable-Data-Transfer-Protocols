@@ -25,7 +25,7 @@
 #define Bvalue 1
 
 //*macro for Sender's estimated RTT value
-#define RTT 15 
+#define RTT 15
 
 /* a "msg" is the data unit passed from layer 5 (teachers code) to layer  */
 /* 4 (students' code).  It contains the data (characters) to be delivered */
@@ -92,7 +92,7 @@ void A_output(struct msg message)
     switch (A.SenderFsmState)
     {
     case WAITING_FOR_ACKNOWLEDGEMENT:
-        printf("Entity A Sender is still waiting for acknowledgement,\n so packet with message (%s) is dropped  \n", message.data);
+        printf("[output] Entity A Sender is still waiting for acknowledgement,\n so packet with message (%s) is dropped  \n", message.data);
         break;
     case WAITING_FOR_LAYER5_CALL:
     {
@@ -107,7 +107,7 @@ void A_output(struct msg message)
         newPacket.checksum = CalculateChecksum(&newPacket);
         //sending packet to layer3
         tolayer3(Avalue, newPacket);
-        printf("Entity A Sender sent packet with sequence number of %d and data of %s\n", newPacket.seqnum, newPacket.payload);
+        printf("[output] Entity A Sender sent packet with sequence number of %d and data of %s\n", newPacket.seqnum, newPacket.payload);
         // Changing A's State
         A.SenderFsmState = WAITING_FOR_ACKNOWLEDGEMENT;
         // setting last packet in A to the formed packet in cas lost
@@ -160,7 +160,7 @@ void A_input(struct pkt packet)
         {
             if (packet.acknum == A.Senderbitsequence)
             {
-                printf("Entity A Sender recieved Correct packet Acknowledgement, please proceed\n");
+                printf("[input] Entity A Sender recieved Correct packet Acknowledgement, please proceed\n");
                 // sincec checksum and acknowledgement number are correct so we stop the timer and send the packet to layer 5
                 stoptimer(Avalue);
                 //also since this packet is an ack packet we just consume it and don't pass it to layer 5
@@ -170,14 +170,14 @@ void A_input(struct pkt packet)
             }
             else
             {
-                printf("Entity A Sender recieved unexpected ack which is not equal to %d , correct and resend\n", A.Senderbitsequence);
+                printf("[input] Entity A Sender recieved unexpected ack which is not equal to %d , correct and resend\n", A.Senderbitsequence);
                 // tolayer3(Avalue, A.lastpacket);
                 return;
             }
         }
         else
         {
-            printf("Endtity A Sender Recieved packet with payload %s is corrupted , resend\n", packet.payload);
+            printf("[input] Entity A Sender Recieved packet with payload %s is corrupted , resend\n", packet.payload);
             // tolayer3(Avalue, A.lastpacket);
             return;
         }
@@ -185,7 +185,7 @@ void A_input(struct pkt packet)
 
     default:
         // case when A Sender is not waiting for acknowledgement and not waiting for Ack messages
-        printf("Entity A Sender is not waiting for acknowledgement so cant take this input with data %s and will drop it \n ", packet.payload);
+        printf("[input] Entity A Sender is not waiting for acknowledgement so cant take this input with data %s and will drop it \n ", packet.payload);
         break;
     }
 }
@@ -196,13 +196,13 @@ void A_timerinterrupt(void)
     switch (A.SenderFsmState)
     {
     case WAITING_FOR_ACKNOWLEDGEMENT:
-        printf("Entity A Sender's timer timed out, resending last packet of payload %s \n", A.lastpacket.payload);
+        printf("[output] Entity A Sender's timer timed out, resending last packet of payload %s \n", A.lastpacket.payload);
         tolayer3(Avalue, A.lastpacket);
         starttimer(Avalue, A.RoundTripTime);
         break;
 
     default:
-        printf("Entity A Sender's timer timed out while not waiting for acknowledgement hence no data on the network and ignore\n");
+        printf("[output] Entity A Sender's timer timed out while not waiting for acknowledgement hence no data on the network and ignore\n");
         break;
     }
 }
@@ -235,7 +235,7 @@ void B_input(struct pkt packet)
 {
     if (packet.checksum != CalculateChecksum(&packet))
     {
-        printf("Entity B Reciever recieved packet with payload %s is corrupted ,\n sending negative acknowledgment please resend \n", packet.payload);
+        printf("[input] Entity B Reciever recieved packet with payload %s is corrupted ,\n sending negative acknowledgment please resend \n", packet.payload);
         //send -ve acknowledgement
         Ack(Bvalue, !B.RecieverFsmState);
         return;
@@ -244,7 +244,7 @@ void B_input(struct pkt packet)
 
     else if (packet.seqnum == B.RecieverFsmState)
     {
-        printf("Entity B Reciever recieved packet with payload %s  (not corrupted),\n sending positive acknowledgement to A Entity\n ", packet.payload);
+        printf("[input] Entity B Reciever recieved packet with payload %s  (not corrupted),\n sending positive acknowledgement to A Entity\n ", packet.payload);
         //positively acknowledging A sender
         Ack(Bvalue, B.RecieverFsmState);
         //send data for application layer for later use
@@ -254,7 +254,7 @@ void B_input(struct pkt packet)
     }
     else
     {
-        printf("Entity B Reciever recieved packet (which is not corrupted(),\n but with different Ack num hence dropped with negative acknowledgement\n (correct acknowledgement A is waiting for)\n");
+        printf("[input] Entity B Reciever recieved packet (which is not corrupted(),\n but with different Ack num hence dropped with negative acknowledgement\n (correct acknowledgement A is waiting for)\n");
         Ack(Bvalue, !B.RecieverFsmState);
         return;
     }

@@ -53,13 +53,12 @@ struct pkt
 //, round trip time after which timer interrupt occurs,sender bit sequence
 struct SenderEntity
 {
- int BasePktNum;//the starting packet index
- int NextPktNum;// next packet to send from' index
- int WindowSize;// the N parameter in Go back N which corresponds to how many packets are sent over network
- struct pkt BufferedPackets[BufferSize];//circular array / fifo for packets that are not yet acked 
- int BufferNextNum;// integer index for next buffer index to be placed at
- int RoundTripTime;// estimated round trip time of a packet and its ack/nack
-
+    int BasePktNum;                         //the starting packet index
+    int NextPktNum;                         // next packet to send from' index
+    int WindowSize;                         // the N parameter in Go back N which corresponds to how many packets are sent over network
+    struct pkt BufferedPackets[BufferSize]; //circular array / fifo for packets that are not yet acked
+    int BufferNextNum;                      // integer index for next buffer index to be placed at
+    int RoundTripTime;                      // estimated round trip time of a packet and its ack/nack
 };
 struct RecieverEntity
 {
@@ -84,19 +83,19 @@ struct RecieverEntity B;
 void A_output(struct msg message)
 {
     // if buffer is not full of packets
-    if(A.BufferNextNum-A.BasePktNum>BufferSize)
+    if (A.BufferNextNum - A.BasePktNum > BufferSize)
     {
-        printf("A Sender Entity's Buffer is full message with data %s is being dropped ",message.data);
+        printf("[output] A Sender Entity's Buffer is full message with data %s is being dropped ", message.data);
     }
-    printf("A Sender's Entity is buffering message with data %s then sending it at its turn",message.data);
-    //getting address of next place in buffer to add the packet to it 
-    struct pkt* packetinbuffer=&A.BufferedPackets[A.BufferNextNum%BufferSize];
+    printf("[output] A Sender's Entity is buffering message with data %s then sending the data at window", message.data);
+    //getting address of next place in buffer to add the packet to it
+    struct pkt *packetinbuffer = &A.BufferedPackets[A.BufferNextNum % BufferSize];
     // add sequence number to the packet
-    packetinbuffer->seqnum=A.BufferNextNum;
+    packetinbuffer->seqnum = A.BufferNextNum;
     //move message data to packet payload
-    BufferData(message.data,packetinbuffer->payload);
+    BufferData(message.data, packetinbuffer->payload);
     //adding checksum for packet
-    packetinbuffer->checksum=CalculateChecksum(packetinbuffer);
+    packetinbuffer->checksum = CalculateChecksum(packetinbuffer);
     //incrementing buffer index
     A.BufferNextNum++;
     //send N packets in A's window
@@ -104,26 +103,26 @@ void A_output(struct msg message)
 }
 void SendPacketsInWindow(void)
 {
-   while (A.NextPktNum<A.BufferNextNum/* as long as buffer is not yet empty */
-        && A.NextPktNum <A.BasePktNum+A.WindowSize )/*and as long as the next sequence number is withn the range of the current window*/
-   {
-      //here since it is a circular array/fifo we get the index of packet by getting the ramiander of the sequence number from the buffer size
-      struct pkt* packettobesent=&A.BufferedPackets[A.NextPktNum%BufferSize];
-      //now send the packet over network layer (layer 3)
-      tolayer3(Avalue,*packettobesent);
-       // if we are now having both same base and next this means we are sending the first Packet so we will start timer on it
-      if(A.BasePktNum==A.NextPktNum)
-      {
-        starttimer(Avalue,A.RoundTripTime);
-      }
-      //increment the next packet to be sent sequence number
-      A.NextPktNum++; 
-   }
-    
+    while (A.NextPktNum < A.BufferNextNum                 /* as long as buffer is not yet empty */
+           && A.NextPktNum < A.BasePktNum + A.WindowSize) /*and as long as the next sequence number is withn the range of the current window*/
+    {
+        //here since it is a circular array/fifo we get the index of packet by getting the ramiander of the sequence number from the buffer size
+        struct pkt *packettobesent = &A.BufferedPackets[A.NextPktNum % BufferSize];
+        //now send the packet over network layer (layer 3)
+        printf("[output] A Sender's Entity is Sending packet of Sequence number %d over network (layer 3)", packettobesent->seqnum);
+        tolayer3(Avalue, *packettobesent);
+        // if we are now having both same base and next this means we are sending the first Packet so we will start timer on it
+        if (A.BasePktNum == A.NextPktNum)
+        {
+            starttimer(Avalue, A.RoundTripTime);
+        }
+        //increment the next packet to be sent sequence number
+        A.NextPktNum++;
+    }
 }
 
-//* function that takes the packet and returns the checksum for it and return it to 
-//either  add it to packet  or to validate being not corrupted 
+//* function that takes the packet and returns the checksum for it and return it to
+//either  add it to packet  or to validate being not corrupted
 int CalculateChecksum(struct pkt *packet)
 {
     //to calculate the checksum we first sum all the packet headers and payload values
@@ -153,26 +152,26 @@ void B_output(struct msg message) /* need be completed only for extra credit */
 /* called from layer 3, when a packet arrives for layer 4 */
 void A_input(struct pkt packet)
 {
-    if (packet.checksum!=CalculateChecksum(&packet))
+    if (packet.checksum != CalculateChecksum(&packet))
     {
-        printf("A sender Entity Recieved Corrupted Packet of acknowledgement number %d with payload %s and hence being dropped, please resend \n",packet.acknum,packet.payload);
+        printf("[input] A sender Entity Recieved Corrupted Packet of acknowledgement number %d with payload %s and hence being dropped, please resend \n", packet.acknum, packet.payload);
         return;
-    } 
-    else if (packet.acknum <A.BasePktNum)
+    }
+    else if (packet.acknum < A.BasePktNum)
     {
-        printf("A sender Entity Recieved Packet of acknowledgement number %d< %d As a NACK .Dropped \n",packet.acknum,A.BasePktNum);
+        printf("[input] A sender Entity Recieved Packet of acknowledgement number %d< %d As a NACK .Dropped \n", packet.acknum, A.BasePktNum);
         return;
     }
     else
     {
-        printf("A sender Entity Recieved Correct ACK(%d)=Base(%d) with payload %s ,Incrementing A's Base number\n",packet.acknum,A.BasePktNum,packet.payload);
-        //incrementing A's base for last acknowledged packet from B 
-        A.BasePktNum=packet.acknum+1;
+        printf("[input] A sender Entity Recieved Correct ACK(%d)=Base(%d) with payload %s ,Incrementing A's Base number\n", packet.acknum, A.BasePktNum, packet.payload);
+        //incrementing A's base for last acknowledged packet from B
+        A.BasePktNum = packet.acknum + 1;
     }
     //condidition if A's base is the same as next which means that there are no packets in window yet
-    if(A.BasePktNum==A.NextPktNum)
+    if (A.BasePktNum == A.NextPktNum)
     {
-        printf("A Sender Entity has no packets to send in window , stopping A's timer");
+        printf("[input] A Sender Entity has no packets to send in window , stopping A's timer");
         stoptimer(Avalue);
         //callig sendpackets in window to check if there are any and open the timer itself
         SendPacketsInWindow();
@@ -180,35 +179,35 @@ void A_input(struct pkt packet)
     // if there are yet packets in the window we open their timers to wait for their acks/nacks
     else
     {
-        printf("A Sender entity starting timer for packet of sequence number %d \n",A.BasePktNum);
-        starttimer(Avalue,A.RoundTripTime);
-    }   
+        printf("[input] A Sender entity starting timer for packet of sequence number %d \n", A.BasePktNum);
+        starttimer(Avalue, A.RoundTripTime);
+    }
 }
 
 /* called when A's timer goes off */
 void A_timerinterrupt(void)
 {
-//checking if there is no packet in window
-    if (A.BasePktNum==A.NextPktNum)
+    //checking if there is no packet in window
+    if (A.BasePktNum == A.NextPktNum)
     {
-        printf("A Sender Entity timer interrupt, nothing left to send\n");
+        printf("[output] A Sender Entity timer interrupt, nothing left to send\n");
         return;
     }
     else
     {
-        printf("A Sender Entity timer interrupt, Resending Un acked packets from sequence number %d to %d \n",A.BasePktNum,A.NextPktNum);
-    
-    //looping over packets that are still in window, not yet acked
-    for (int i = A.BasePktNum; i < A.NextPktNum; i++)
-    {
-    //here since it is a circular array/fifo we get the index of packet by getting the ramiander of the sequence number from the buffer size
-        struct pkt* packettoberesent=&A.BufferedPackets[i%BufferSize];
-        printf("A: Resend packet of sequence number %d, and payload %s \n",packettoberesent->seqnum,packettoberesent->payload);
-        tolayer3(Avalue,*packettoberesent);
-    }
-    // restarting timer after resending
-    printf("A Sender Entity Restarted timer after timer interrupt\n");
-    starttimer(Avalue,A.RoundTripTime);
+        printf("[output] A Sender Entity timer interrupt, Resending Un acked packets from sequence number %d to %d \n", A.BasePktNum, A.NextPktNum);
+
+        //looping over packets that are still in window, not yet acked
+        for (int i = A.BasePktNum; i < A.NextPktNum; i++)
+        {
+            //here since it is a circular array/fifo we get the index of packet by getting the ramiander of the sequence number from the buffer size
+            struct pkt *packettoberesent = &A.BufferedPackets[i % BufferSize];
+            printf("[output] A: Resend packet of sequence number %d, and payload %s \n", packettoberesent->seqnum, packettoberesent->payload);
+            tolayer3(Avalue, *packettoberesent);
+        }
+        // restarting timer after resending
+        printf("[output] A Sender Entity Restarted timer after timer interrupt\n");
+        starttimer(Avalue, A.RoundTripTime);
     }
 }
 
@@ -217,53 +216,51 @@ void A_timerinterrupt(void)
 void A_init(void)
 {
     //initializing A sending entity
-  A.BasePktNum=1;
-  A.NextPktNum=1;
-  A.RoundTripTime=RTT;
-  A.BufferNextNum=1;
-  A.WindowSize=8;
+    A.BasePktNum = 1;
+    A.NextPktNum = 1;
+    A.RoundTripTime = RTT;
+    A.BufferNextNum = 1;
+    A.WindowSize = 8;
 }
-
 
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
 
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet)
 {
-    if(packet.checksum!=CalculateChecksum(&packet))
+    if (packet.checksum != CalculateChecksum(&packet))
     {
-        printf("B Reciever Entity Recieved packet of payload %s with corrupted data ,sending NACK please resend \n",packet.payload);
+        printf("[input] B Reciever Entity Recieved packet of payload %s with corrupted data ,sending NACK please resend \n", packet.payload);
         //adding a wrong ACK num so sender would resend packet
-        struct pkt NACKPKT={.acknum=B.ExpectedSeqNum-1};
+        struct pkt NACKPKT = {.acknum = B.ExpectedSeqNum - 1};
         //adding checksum
-        NACKPKT.checksum=CalculateChecksum(&NACKPKT);
+        NACKPKT.checksum = CalculateChecksum(&NACKPKT);
         //sending NACK over layer 3
-        tolayer3(Bvalue,NACKPKT);
+        tolayer3(Bvalue, NACKPKT);
         return;
     }
-    else if (packet.seqnum!=B.ExpectedSeqNum)
+    else if (packet.seqnum != B.ExpectedSeqNum)
     {
-        printf("B Reciever Entity Recieved packet of payload %s with Sequence number=%d  not as expected(%d) (out of order)\n ,sending NACK please resend correct order \n",packet.payload,packet.seqnum,B.ExpectedSeqNum);
+        printf("[input] B Reciever Entity Recieved packet of payload %s with Sequence number=%d  not as expected(%d) (out of order)\n ,sending NACK please resend correct order \n", packet.payload, packet.seqnum, B.ExpectedSeqNum);
         //adding a wrong ACK num so sender would resend packet
-        struct pkt NACKPKT={.acknum=B.ExpectedSeqNum-1};
+        struct pkt NACKPKT = {.acknum = B.ExpectedSeqNum - 1};
         //adding checksum
-        NACKPKT.checksum=CalculateChecksum(&NACKPKT);
+        NACKPKT.checksum = CalculateChecksum(&NACKPKT);
         //sending NACK over layer 3
-        tolayer3(Bvalue,NACKPKT);
+        tolayer3(Bvalue, NACKPKT);
         return;
     }
     else
     {
-        printf("B Reciever Entity Recieved packet of payload %s with Sequence number=%d  which is as expected(%d),sending ACK please proceed \n",packet.payload,packet.seqnum,B.ExpectedSeqNum);
+        printf("[input] B Reciever Entity Recieved packet of payload %s with Sequence number=%d  which is as expected(%d),sending ACK please proceed \n", packet.payload, packet.seqnum, B.ExpectedSeqNum);
         //adding correct ACK num to acknowledge Sender
-        struct pkt ACKPKT={.acknum=B.ExpectedSeqNum};
+        struct pkt ACKPKT = {.acknum = B.ExpectedSeqNum};
         //adding checksum
-        ACKPKT.checksum=CalculateChecksum(&ACKPKT);
+        ACKPKT.checksum = CalculateChecksum(&ACKPKT);
         //sending ACK over layer 3
-        tolayer3(Bvalue,ACKPKT);
+        tolayer3(Bvalue, ACKPKT);
         // incrementing B's Expected Sequence number
         B.ExpectedSeqNum++;
-   
     }
 }
 
@@ -278,7 +275,7 @@ void B_init(void)
 {
 
     //initializing B Reciever Entity
-    B.ExpectedSeqNum=1;
+    B.ExpectedSeqNum = 1;
 }
 
 /*****************************************************************
@@ -691,7 +688,7 @@ void tolayer3(int AorB /* A or B is trying to stop timer */, struct pkt packet)
 void tolayer5(int AorB, char datasent[20])
 {
     int i;
-    if (TRACE>=2)
+    if (TRACE >= 2)
     {
         printf("          TOLAYER5: data received: ");
         for (i = 0; i < 20; i++)
