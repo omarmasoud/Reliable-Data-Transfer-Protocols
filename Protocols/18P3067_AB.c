@@ -51,8 +51,8 @@ struct pkt
 //Set of all possible States in the finite state machine for both Sender and reciever entity
 enum FsmStates
 {
-    WAITING_FOR_ACKNOWLEDGEMENT,
-    WAITING_FOR_LAYER5_CALL,
+    WAITING_FOR_ACKNOWLEDGEMENT=2,
+    WAITING_FOR_LAYER5_CALL=3,
     WAITING_FOR_0_SEQ = 0,
     WAITING_FOR_1_SEQ = 1
 };
@@ -78,7 +78,7 @@ void tolayer5(int AorB, char datasent[20]);
 
 //utilities implemented
 int CalculateChecksum(struct pkt *packet);
-void BufferData(char *data1creator, char *data2reciever);
+void CopyData(char *data1creator, char *data2reciever);
 void Ack(int AorB, int ack);
 
 /********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
@@ -98,11 +98,10 @@ void A_output(struct msg message)
     {
         //making a new packet
         struct pkt newPacket;
+        //setting package sequence number for synchronizing with reciever
         newPacket.seqnum = A.Senderbitsequence;
-        //setting package acknowledgement number for synchronizing with reciever
-        newPacket.acknum = A.Senderbitsequence;
-        //buffering data for the new packet
-        BufferData(message.data, newPacket.payload);
+        //copying data for the new packet
+        CopyData(message.data, newPacket.payload);
         // adding checksum to the packet
         newPacket.checksum = CalculateChecksum(&newPacket);
         //sending packet to layer3
@@ -133,10 +132,10 @@ int CalculateChecksum(struct pkt *packet)
     return checksum;
 }
 
-//* void function that buffers data into the packet by identifying its size and copying it elementwise
-void BufferData(char *data1creator, char *data2reciever)
+//* void function that copies data into the packet by identifying its size and copying it elementwise
+void CopyData(char *data1creator, char *data2reciever)
 {
-    // int datasize = (int)(sizeof(data1creator) / sizeof(char)); //gets the size of the buffer to loop on
+    
     for (int i = 0; i < 20; i++)
     {
         data2reciever[i] = data1creator[i];
@@ -166,7 +165,7 @@ void A_input(struct pkt packet)
                 //also since this packet is an ack packet we just consume it and don't pass it to layer 5
                 A.SenderFsmState = WAITING_FOR_LAYER5_CALL;
                 //flipping A's Senderbitsequence
-                A.Senderbitsequence != A.Senderbitsequence;
+                A.Senderbitsequence =! A.Senderbitsequence;
             }
             else
             {
@@ -249,12 +248,12 @@ void B_input(struct pkt packet)
         Ack(Bvalue, B.RecieverFsmState);
         //send data for application layer for later use
         tolayer5(Bvalue, packet.payload);
-        B.RecieverFsmState = B.RecieverFsmState == WAITING_FOR_0_SEQ ? WAITING_FOR_1_SEQ : WAITING_FOR_0_SEQ;
+        B.RecieverFsmState = !B.RecieverFsmState;
         return;
     }
     else
     {
-        printf("[input] Entity B Reciever recieved packet (which is not corrupted(),\n but with different Ack num hence dropped with negative acknowledgement\n (correct acknowledgement A is waiting for)\n");
+        printf("[input] Entity B Reciever recieved packet (which is not corrupted),\n but with different Ack num hence dropped with negative acknowledgement\n (correct acknowledgement A is waiting for)\n");
         Ack(Bvalue, !B.RecieverFsmState);
         return;
     }

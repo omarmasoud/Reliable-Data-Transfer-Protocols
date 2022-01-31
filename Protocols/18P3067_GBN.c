@@ -71,7 +71,7 @@ void tolayer3(int AorB, struct pkt packet);
 void tolayer5(int AorB, char datasent[20]);
 
 int CalculateChecksum(struct pkt *packet);
-void BufferData(char *data1creator, char *data2reciever);
+void CopyData(char *data1creator, char *data2reciever);
 void SendPacketsInWindow(void);
 
 /********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
@@ -93,7 +93,7 @@ void A_output(struct msg message)
     // add sequence number to the packet
     packetinbuffer->seqnum = A.BufferNextNum;
     //move message data to packet payload
-    BufferData(message.data, packetinbuffer->payload);
+    CopyData(message.data, packetinbuffer->payload);
     //adding checksum for packet
     packetinbuffer->checksum = CalculateChecksum(packetinbuffer);
     //incrementing buffer index
@@ -135,8 +135,8 @@ int CalculateChecksum(struct pkt *packet)
     return checksum;
 }
 
-//* void function that buffers data into the packet by identifying its size and copying it elementwise
-void BufferData(char *data1creator, char *data2reciever)
+//* void function that copies data into the packet by identifying its size and copying it elementwise
+void CopyData(char *data1creator, char *data2reciever)
 {
     for (int i = 0; i < 20; i++)
     {
